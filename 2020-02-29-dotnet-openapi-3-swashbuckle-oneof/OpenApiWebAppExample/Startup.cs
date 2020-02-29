@@ -29,7 +29,23 @@ namespace OpenApiWebAppExample
             services.AddControllers();
             // Register the Swagger generator, defining 1 or more Swagger documents
             services.AddSwaggerGen(c =>
-            {                
+            {
+                 c.GeneratePolymorphicSchemas(infoType => {
+                     if(infoType == typeof(DynamicType))
+                    {
+                        return new Type[] {
+                            typeof(DynamicType<string>),
+                            typeof(DynamicType<decimal?>)
+                        };
+                    }
+                   return Enumerable.Empty<Type>();
+                }, (discriminator) => {
+                    if(discriminator == typeof(DynamicType))
+                    {
+                        return "dataType";
+                    }
+                    return null;
+                });
                 c.SwaggerDoc("v1", new OpenApiInfo
                 {
                     Version = "v1",

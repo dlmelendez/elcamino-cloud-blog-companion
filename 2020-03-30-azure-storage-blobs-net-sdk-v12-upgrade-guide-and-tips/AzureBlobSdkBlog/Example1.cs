@@ -125,16 +125,14 @@ namespace AzureBlobSdkBlog
         {
             try
             {
-                Response<BlobDownloadInfo> download = await blobJson.DownloadAsync();
-                using (Stream s = download.Value.Content)
+                using (MemoryStream s = new MemoryStream())
                 {
+                    await blobJson.DownloadToAsync(s);
                     using (StreamReader sr = new StreamReader(s, Encoding.UTF8))
+                    using (JsonReader reader = new JsonTextReader(sr))
                     {
-                        using (JsonReader reader = new JsonTextReader(sr))
-                        {
-                            JsonSerializer serializer = new JsonSerializer();
-                            return serializer.Deserialize<Entity>(reader);
-                        }
+                        JsonSerializer serializer = new JsonSerializer();
+                        return serializer.Deserialize<Entity>(reader);
                     }
                 }
             }
@@ -180,46 +178,38 @@ namespace AzureBlobSdkBlog
 
         public IEnumerable<BlobClient> GetAllBlobs(BlobContainerClient container)
         {
-            string token = null;
-            do
+            foreach (BlobItem blob in container.GetBlobs(BlobTraits.None, BlobStates.None, string.Empty))
             {
-                Pageable<BlobItem> pageable =
-                            container.GetBlobs(BlobTraits.None, BlobStates.None, string.Empty);
-                IEnumerable<Page<BlobItem>> pages = pageable.AsPages(token, 100);
-                foreach (Page<BlobItem> page in pages)
-                {
-                    token = page.ContinuationToken;
-                    foreach (BlobItem blob in page.Values)
-                    {
-                        yield return container.GetBlobClient(blob.Name);
-                    }
-                }
-            } while (!string.IsNullOrEmpty(token));
+                yield return container.GetBlobClient(blob.Name);
+            }
         }
 
         // -- or --
 
         public async IAsyncEnumerable<BlobClient> GetAllBlobsAsync(BlobContainerClient container)
         {
-            string token = null;
-            do
+            await foreach (BlobItem page in container.GetBlobsAsync(BlobTraits.None, BlobStates.None, string.Empty))
             {
-                AsyncPageable<BlobItem> pageable =
-                            container.GetBlobsAsync(BlobTraits.None, BlobStates.None, string.Empty);
-                IAsyncEnumerable<Page<BlobItem>> pages = pageable.AsPages(token, 100);
-                await foreach (Page<BlobItem> page in pages)
-                {
-                    token = page.ContinuationToken;
-                    foreach (BlobItem blob in page.Values)
-                    {
-                        yield return container.GetBlobClient(blob.Name);
-                    }
-                }
-            } while (!string.IsNullOrEmpty(token));
+                yield return container.GetBlobClient(blob.Name);
+            }
         }
 
-        //
-
+        // -- or if you want to explicitly process it one page at a time --
+        
+        public async IAsyncEnumerable<BlobClient> GetAllBlobsAsync(BlobContainerClient container)
+        {
+            AsyncPageable<BlobItem> pageable = 
+                container.GetBlobsAsync(BlobTraits.None, BlobStates.None, string.Empty);
+            IAsyncEnumerable<Page<BlobItem>> pages = pageable.AsPages(/* Pass a ContinuationToken here if you have one to resume */);
+            await foreach (Page<BlobItem> page in pages)
+            {
+                foreach(BlobItem blob in page.Values)
+                {
+                    yield return container.GetBlobClient(blob.Name);
+                }
+                // save page.ContinuationToken if you want to stop early and resume later
+            }
+        }
     }
 }
 
